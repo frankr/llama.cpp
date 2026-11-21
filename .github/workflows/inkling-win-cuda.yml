@@ -1,0 +1,51 @@
+name: Inkling Windows CUDA build (RTX 5060 Ti)
+
+# Manual only. Builds llama-server, llama-bench and test-backend-ops for Windows x64 + CUDA 13.5, sm_120 (RTX 50xx),
+# from this branch (realugbun's inkling2-speed fused Inkling 2 kernels), and uploads one zip with the CUDA runtime DLLs.
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install CUDA toolkit
+        uses: ./.github/actions/windows-setup-cuda
+        with:
+          cuda_version: '13.5'
+          cuda_arch: x64
+
+      - name: Install Ninja
+        run: choco install ninja
+
+      - name: Build
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          cmake -S . -B build -G "Ninja Multi-Config" ^
+            -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=120 ^
+            -DGGML_NATIVE=OFF -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON ^
+            -DBUILD_SHARED_LIBS=ON -DLLAMA_BUILD_BORINGSSL=ON -DLLAMA_BUILD_TESTS=ON
+          set /A NINJA_JOBS=%NUMBER_OF_PROCESSORS%-1
+          cmake --build build --config Release -j %NINJA_JOBS% --target llama-server llama-bench test-backend-ops
+
+      - name: Pack
+        run: |
+          $out = 'pkg'
+          New-Item -ItemType Directory -Force $out | Out-Null
+          Copy-Item .\build\bin\Release\*.exe, .\build\bin\Release\*.dll $out
+          foreach ($d in @("$env:CUDA_PATH\bin", "$env:CUDA_PATH\bin\x64", "$env:CUDA_PATH\lib")) {
+            if (Test-Path $d) { Get-ChildItem $d -Include cudart64_*.dll, cublas64_*.dll, cublasLt64_*.dll -Recurse -Depth 0 | Copy-Item -Destination $out -ErrorAction SilentlyContinue }
+          }
+          "source: $env:GITHUB_REPOSITORY@$env:GITHUB_SHA`ncuda: 13.5 x64, sm_120`nbuilt: $(Get-Date -AsUTC -Format o)" | Set-Content "$out\BUILD_INFO.txt"
+          Get-ChildItem $out | Format-Table Name, Length
+          7z a llama-inkling2-speed-win-cuda13.5-sm120.zip .\pkg\*
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: llama-inkling2-speed-win-cuda13.5-sm120
+          path: llama-inkling2-speed-win-cuda13.5-sm120.zip
+          retention-days: 30
