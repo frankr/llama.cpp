@@ -203,6 +203,9 @@ public:
     // padded length of the longest cell list of the slices; 0 if kv_rows are not used (multiple streams)
     uint32_t get_n_kv_rows(const llama_ubatch & ubatch) const;
 
+    // K/V cells of a banded attention over the ubatch's one sequence, 0 if the cells are not position-contiguous
+    uint32_t get_n_kv_pos_contiguous(const slot_info & sinfo, const llama_ubatch & ubatch) const;
+
     // get views of the current state of the cache
     ggml_tensor * get_k(ggml_context * ctx, int32_t il, uint32_t n_kv, const slot_info & sinfo) const;
     ggml_tensor * get_v(ggml_context * ctx, int32_t il, uint32_t n_kv, const slot_info & sinfo) const;
@@ -419,6 +422,7 @@ public:
 
     uint32_t get_n_kv() const;
     uint32_t get_n_kv_rows() const;
+    uint32_t get_n_kv_pos_contiguous() const;
 
     ggml_type type_k() const;
     ggml_type type_v() const;

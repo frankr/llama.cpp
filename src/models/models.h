@@ -2538,6 +2538,12 @@ struct llama_model_inkling2 : public llama_model_base {
 
         // the inputs and the token embeddings
         ggml_tensor * build_inputs();
+
+        // banded flash attention for layer il on its device and cache
+        bool use_banded(int il, bool swa);
+        std::vector<std::pair<std::pair<bool, ggml_backend_dev_t>, bool>> banded_dev_ok;
+        // [base, swa] contiguous mask of the banded attention, shared by the layers of a graph
+        ggml_tensor * mask_banded[2] = { nullptr, nullptr };
         // cache slot il of physical layer ip; messages [n_embd, LOOP_CTRL_COUNT, n_tokens] are mixed into its inputs
         ggml_tensor * build_layer(int il, int ip, ggml_tensor * cur, std::vector<ggml_tensor *> & blocks,
                 ggml_tensor * messages = nullptr, const loop_layer * loop = nullptr);
