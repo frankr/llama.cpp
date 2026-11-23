@@ -30,7 +30,7 @@ jobs:
             -DGGML_NATIVE=OFF -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON ^
             -DBUILD_SHARED_LIBS=ON -DLLAMA_BUILD_BORINGSSL=ON -DLLAMA_BUILD_TESTS=ON
           set /A NINJA_JOBS=%NUMBER_OF_PROCESSORS%-1
-          cmake --build build --config Release -j %NINJA_JOBS% --target llama-server llama-bench test-backend-ops
+          cmake --build build --config Release -j %NINJA_JOBS% --target llama-server llama-bench test-backend-ops llama-perplexity
 
       - name: Pack
         run: |

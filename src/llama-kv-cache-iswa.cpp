@@ -5,6 +5,9 @@
 #include "llama-model.h"
 
 #include <algorithm>
+#include <cstdlib>
+#include <stdexcept>
+#include <string>
 #include <cassert>
 
 //
@@ -97,10 +100,26 @@ llama_kv_cache_iswa::llama_kv_cache_iswa(
             v_trans, offload, unified, size_base, n_seq_max,
             0, LLAMA_SWA_TYPE_NONE, mem_other_base, filter_base, reuse, share);
 
+    // Inkling 2: LLAMA_INKLING_SWA_KV=f16|q8_0|q4_0 gives the sliding-window caches their own K/V type; the global
+    // caches keep -ctk / -ctv. Unset = same type as the global caches. (Idea from Kintsugi, professorpalmer.)
+    ggml_type type_k_swa = type_k;
+    ggml_type type_v_swa = type_v;
+    if (model.arch == LLM_ARCH_INKLING2 || model.arch == LLM_ARCH_INKLING2_LOOP) {
+        if (const char * e = getenv("LLAMA_INKLING_SWA_KV")) {
+            const std::string v = e;
+            const ggml_type t = v == "f16" ? GGML_TYPE_F16 : v == "q8_0" ? GGML_TYPE_Q8_0 : v == "q4_0" ? GGML_TYPE_Q4_0 : GGML_TYPE_COUNT;
+            if (t == GGML_TYPE_COUNT) {
+                throw std::runtime_error("LLAMA_INKLING_SWA_KV must be f16, q8_0 or q4_0");
+            }
+            type_k_swa = type_v_swa = t;
+            LLAMA_LOG_INFO("%s: LLAMA_INKLING_SWA_KV: SWA K/V type = %s\n", __func__, ggml_type_name(t));
+        }
+    }
+
     LLAMA_LOG_INFO("%s: creating     SWA KV cache, size = %u cells\n", __func__, size_swa);
 
     kv_swa = std::make_unique<llama_kv_cache>(
-            model, no_alloc, hparams, type_k, type_v,
+            model, no_alloc, hparams, type_k_swa, type_v_swa,
             v_trans, offload, unified, size_swa, n_seq_max,
             hparams.n_swa, hparams.swa_type, mem_other_swa, filter_swa, reuse, share);
 }
