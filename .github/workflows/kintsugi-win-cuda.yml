@@ -1,0 +1,68 @@
+name: Kintsugi Inkling engine, Windows CUDA sm_120 build
+
+# Builds Cary Palmer's Kintsugi for Inkling 2 Mini engine (MIT, github.com/professorpalmer/Kintsugi-Inkling-2-Mini,
+# release v1.0 engine source a20cc419b) for the RTX 5060 Ti (sm_120), which its v1.0 release does not ship.
+# The source is fetched from the release and checked against its published sha256; nothing of it is committed here.
+on:
+  push:
+    branches: [kintsugi-sm120]
+    paths: ['.github/workflows/kintsugi-win-cuda.yml']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install CUDA toolkit
+        uses: ./.github/actions/windows-setup-cuda
+        with:
+          cuda_version: '13.5'
+          cuda_arch: x64
+
+      - name: Install Ninja
+        run: choco install ninja
+
+      - name: Fetch engine source
+        run: |
+          $u = 'https://github.com/professorpalmer/Kintsugi-Inkling-2-Mini/releases/download/v1.0/Kintsugi-Inkling-2-Mini-v1.0-engine-src-a20cc419b.tar.gz'
+          Invoke-WebRequest $u -OutFile src.tgz
+          $h = (Get-FileHash src.tgz -Algorithm SHA256).Hash.ToLower()
+          if ($h -ne 'd0d934f5c8f6763477f4d8612000e6770e27b6260b426aa876460725319c6663') { throw "sha256 mismatch: $h" }
+          New-Item -ItemType Directory kin | Out-Null
+          tar -xzf src.tgz -C kin
+          Get-ChildItem kin
+
+      - name: Build
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          cmake -S kin\inkling-engine-a20cc419b -B build -G Ninja -DCMAKE_BUILD_TYPE=Release ^
+            -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=120-real -DGGML_CUDA_MIRAI=OFF ^
+            -DLLAMA_BUILD_UI=ON -DLLAMA_USE_PREBUILT_UI=OFF -DGGML_CUDA_GRAPHS=ON -DLLAMA_BUILD_SERVER=ON ^
+            -DLLAMA_BUILD_TESTS=ON -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_CURL=OFF -DGGML_RPC=OFF -DGGML_BLAS=OFF ^
+            -DGGML_NATIVE=OFF -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_CCACHE=OFF ^
+            -DLLAMA_BUILD_COMMIT=a20cc419b -DLLAMA_BUILD_NUMBER=10944
+          if errorlevel 1 exit /b 1
+          set /A NINJA_JOBS=%NUMBER_OF_PROCESSORS%-1
+          cmake --build build -j %NINJA_JOBS% --target llama-server test-backend-ops llama-perplexity llama-bench
+
+      - name: Pack
+        run: |
+          $out = 'pkg'
+          New-Item -ItemType Directory -Force $out | Out-Null
+          Copy-Item .\build\bin\*.exe, .\build\bin\*.dll $out -ErrorAction SilentlyContinue
+          foreach ($d in @("$env:CUDA_PATH\bin", "$env:CUDA_PATH\bin\x64", "$env:CUDA_PATH\lib")) {
+            if (Test-Path $d) { Get-ChildItem $d -Include cudart64_*.dll, cublas64_*.dll, cublasLt64_*.dll -Recurse -Depth 0 | Copy-Item -Destination $out -ErrorAction SilentlyContinue }
+          }
+          "source: Kintsugi-Inkling-2-Mini v1.0 engine a20cc419b (sha256 d0d934f5...)`ncuda: 13.5 x64, sm_120`nbuilt: $(Get-Date -AsUTC -Format o)" | Set-Content "$out\BUILD_INFO.txt"
+          Get-ChildItem $out | Format-Table Name, Length
+          7z a kintsugi-engine-win-cuda13.5-sm120.zip .\pkg\*
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: kintsugi-engine-win-cuda13.5-sm120
+          path: kintsugi-engine-win-cuda13.5-sm120.zip
+          retention-days: 30
