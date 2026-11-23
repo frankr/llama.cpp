@@ -43,6 +43,17 @@
 > different batch sizes: 5060 Ti decode 0.0018 vs 0.0027, prefill 0.0022 vs 0.0031; V100 decode 0.0025 vs 0.0022 (within
 > the measurement error), prefill 0.0016 vs 0.0017. `test-backend-ops -o INKLING2_*` covers each fused chain.
 
+> [!NOTE]
+> **Branch `inkling2-speed-banded`: full 96K context on a 16 GB card.** It adds banded relative-bias flash attention
+> with quantized K/V (a port of Unsloth's #378/#386) on top of `inkling2-speed`. The compute buffer stays at 535 MiB
+> instead of growing with context, so `-ub 1024` fits at 96K. On an RTX 5060 Ti 16 GB (UD-IQ3_XXS, q8_0 KV, ngram
+> speculation) that gives 62.5 tok/s decode, about 109 tok/s on code edits and about 1,680 tok/s prefill, in 14.15 GB
+> of VRAM.
+>
+> ![Inkling 2 Mini on one RTX 5060 Ti, 96K context](media/inkling2-banded-5060ti.png)
+>
+> Full write-up, server command and measuring notes: [docs/inkling2-5060ti-96k.md](docs/inkling2-5060ti-96k.md).
+
 ![llama.cpp](https://raw.githubusercontent.com/ggml-org/llama-brand/refs/heads/master/logo/svg/cover/llama-cpp/cover-llama-cpp-dark.svg)
 
 <div align="center">
